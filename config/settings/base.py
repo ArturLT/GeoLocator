@@ -66,3 +66,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Tamanho máximo de upload (10MB)
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
+# Onde os arquivos enviados serão salvos
+MEDIA_URL  = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
