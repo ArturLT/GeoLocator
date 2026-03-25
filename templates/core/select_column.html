@@ -1,0 +1,58 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>CEP Finder — Upload</title>
+    <link rel="stylesheet" href="{% static 'css/core/upload.css' %}">
+</head>
+// ...existing code...
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>CEP Finder — Selecionar coluna</title>
+    <link rel="stylesheet" href="{% static 'css/core/select_column.css' %}">
+</head>
+<body>
+
+    <a href="{% url 'core:upload' %}" class="back">← Enviar outro arquivo</a>
+
+    <h1>Selecionar coluna de CEP</h1>
+    <p class="subtitle">Indique qual coluna do seu arquivo contém os CEPs.</p>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
+    <!-- Informações do arquivo enviado -->
+    <div class="file-info">
+        <strong>{{ uploaded.original_name }}</strong>
+        <span>{{ uploaded.total_rows }} linha{{ uploaded.total_rows|pluralize }} · {{ columns|length }} coluna{{ columns|length|pluralize }}</span>
+    </div>
+
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label>{{ form.column.label }}</label>
+            <p class="help">{{ form.column.help_text }}</p>
+
+            <div class="column-options">
+                {% for value, label in form.column.field.choices %}
+                    <label class="column-option">
+                        <input type="radio" name="column" value="{{ value }}"
+                               {% if forloop.first %}checked{% endif %}>
+                        {{ label }}
+                    </label>
+                {% endfor %}
+            </div>
+        </div>
+        <button type="submit">Confirmar coluna</button>
+    </form>
+
+</body>
+</html>
