@@ -1,17 +1,28 @@
-{% load static %}
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <title>CEP Finder — Resultados</title>
     <link rel="stylesheet" href="{% static 'css/core/results.css' %}">
+
 </head>
 <body>
 
     <a href="{% url 'core:upload' %}" class="back">← Novo upload</a>
 
     <h1>Resultados — {{ uploaded.original_name }}</h1>
-    <p class="subtitle">Processado em {{ uploaded.updated_at|date:"d/m/Y H:i" }}</p>
+    <p class="subtitle">
+        Processado em {{ uploaded.updated_at|date:"d/m/Y \à\s H:i" }} &middot;
+        {{ uploaded.total_rows }} linha{{ uploaded.total_rows|pluralize }}
+    </p>
+
+    {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+                <li class="{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
 
     <!-- Estatísticas -->
     <div class="stats">
@@ -38,71 +49,80 @@
         <div class="filters">
             <a href="?status=all"
                class="filter-btn {% if filter_status == 'all' %}active{% endif %}">
-                Todos
+                Todos ({{ stats.total }})
             </a>
             <a href="?status=found"
                class="filter-btn {% if filter_status == 'found' %}active{% endif %}">
-                Encontrados
+                Encontrados ({{ stats.found }})
             </a>
             <a href="?status=not_found"
                class="filter-btn {% if filter_status == 'not_found' %}active{% endif %}">
-                Não encontrados
+                Não encontrados ({{ stats.not_found }})
             </a>
         </div>
         <a href="{% url 'core:export' uploaded.id %}" class="export-btn">
-            Baixar CSV
+            ↓ Baixar CSV
         </a>
     </div>
 
     <!-- Tabela -->
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>CEP</th>
-                <th>Logradouro</th>
-                <th>Bairro</th>
-                <th>Cidade</th>
-                <th>UF</th>
-                <th>Latitude</th>   
-                <th>Longitude</th> 
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for result in page_obj %}
-            <tr>
-            <td>{{ result.row_number }}</td>
-            <td>{{ result.cep_original }}</td>
-            <td>{{ result.logradouro|default:"—" }}</td>
-            <td>{{ result.bairro|default:"—" }}</td>
-            <td>{{ result.cidade|default:"—" }}</td>
-            <td>{{ result.estado|default:"—" }}</td>
-            <td>{{ result.latitude|default:"—" }}</td>   
-            <td>{{ result.longitude|default:"—" }}</td>  
-            <td>
-                {% if result.found %}
-                    <span class="badge found">Encontrado</span>
-                {% else %}
-                    <span class="badge missing">Não encontrado</span>
-                {% endif %}
-            </td>
-        </tr>
-            {% empty %}
+    <div class="table-wrapper">
+        <table>
+            <thead>
                 <tr>
-                    <td colspan="7" style="text-align:center; color:#999; padding:32px;">
-                        Nenhum resultado encontrado.
+                    <th>#</th>
+                    <th>CEP</th>
+                    <th>Logradouro</th>
+                    <th>Bairro</th>
+                    <th>Cidade</th>
+                    <th>UF</th>
+                    <th>Latitude</th>
+                    <th>Longitude</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in page_obj %}
+                <tr>
+                    <td>{{ result.row_number }}</td>
+                    <td class="cep-col">{{ result.cep_original }}</td>
+                    <td>{{ result.logradouro|default:"—" }}</td>
+                    <td>{{ result.bairro|default:"—" }}</td>
+                    <td>{{ result.cidade|default:"—" }}</td>
+                    <td>{{ result.estado|default:"—" }}</td>
+                    <td class="coord">{{ result.latitude|default:"—" }}</td>
+                    <td class="coord">{{ result.longitude|default:"—" }}</td>
+                    <td>
+                        {% if result.found %}
+                            <span class="badge found">Encontrado</span>
+                        {% elif result.error_message %}
+                            <span class="badge invalid" title="{{ result.error_message }}">
+                                Inválido
+                            </span>
+                        {% else %}
+                            <span class="badge missing">Não encontrado</span>
+                        {% endif %}
                     </td>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                {% empty %}
+                <tr>
+                    <td colspan="9">
+                        <div class="empty">Nenhum resultado encontrado para este filtro.</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
     <!-- Paginação -->
     {% if page_obj.has_other_pages %}
     <div class="pagination">
+
         {% if page_obj.has_previous %}
-            <a href="?status={{ filter_status }}&page={{ page_obj.previous_page_number }}">←</a>
+            <a href="?status={{ filter_status }}&page={{ page_obj.previous_page_number }}">← Anterior</a>
+        {% else %}
+            <span class="disabled">← Anterior</span>
         {% endif %}
 
         {% for num in page_obj.paginator.page_range %}
@@ -114,8 +134,11 @@
         {% endfor %}
 
         {% if page_obj.has_next %}
-            <a href="?status={{ filter_status }}&page={{ page_obj.next_page_number }}">→</a>
+            <a href="?status={{ filter_status }}&page={{ page_obj.next_page_number }}">Próxima →</a>
+        {% else %}
+            <span class="disabled">Próxima →</span>
         {% endif %}
+
     </div>
     {% endif %}
 

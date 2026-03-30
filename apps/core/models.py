@@ -29,21 +29,21 @@ class UploadedFile(models.Model):
         return f"{self.original_name} ({self.status})"
 
 class CepResult(models.Model):
-
     uploaded_file = models.ForeignKey(
         UploadedFile,
         on_delete=models.CASCADE,
         related_name='results'
     )
-    row_number   = models.IntegerField()
-    cep_original = models.CharField(max_length=20)
-    logradouro   = models.CharField(max_length=255, blank=True)
-    bairro       = models.CharField(max_length=100, blank=True)
-    cidade       = models.CharField(max_length=100, blank=True)
-    estado       = models.CharField(max_length=2,   blank=True)
-    latitude     = models.CharField(max_length=20,  blank=True)  # ← novo
-    longitude    = models.CharField(max_length=20,  blank=True)  # ← novo
-    found        = models.BooleanField(default=False)
+    row_number    = models.IntegerField()
+    cep_original  = models.CharField(max_length=20)
+    logradouro    = models.CharField(max_length=255, blank=True)
+    bairro        = models.CharField(max_length=100, blank=True)
+    cidade        = models.CharField(max_length=100, blank=True)
+    estado        = models.CharField(max_length=2,   blank=True)
+    latitude      = models.CharField(max_length=20,  blank=True)
+    longitude     = models.CharField(max_length=20,  blank=True)
+    found         = models.BooleanField(default=False)
+    error_message = models.CharField(max_length=255, blank=True)  # ← novo
 
     class Meta:
         ordering = ['row_number']

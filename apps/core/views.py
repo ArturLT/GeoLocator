@@ -17,6 +17,18 @@ def upload_file(request):
     if request.method == 'POST':
         form = UploadCSVForm(request.POST, request.FILES)
         if form.is_valid():
+
+            # Limita a 5 arquivos processando ao mesmo tempo
+            processando = UploadedFile.objects.filter(
+                status=UploadedFile.Status.PROCESSING
+            ).count()
+            if processando >= 5:
+                messages.error(
+                    request,
+                    'Muitos arquivos sendo processados. Aguarde e tente novamente.'
+                )
+                return render(request, 'core/upload.html', {'form': form})
+
             file = form.cleaned_data['file']
             result = read_csv_columns(file)
 
@@ -39,8 +51,6 @@ def upload_file(request):
         form = UploadCSVForm()
 
     return render(request, 'core/upload.html', {'form': form})
-
-
 def select_column(request):
     columns = request.session.get('csv_columns')
     uploaded_file_id = request.session.get('uploaded_file_id')
@@ -71,29 +81,32 @@ def select_column(request):
 
 
 def _processar_em_background(uploaded_id):
-    """Função que roda em uma thread separada."""
     from apps.csv_processor.services import read_csv_rows
+    import os
 
     uploaded = UploadedFile.objects.get(id=uploaded_id)
 
     try:
-        # Usa o service que já tem detecção de delimitador
+        # Verifica se o arquivo ainda existe no disco
+        if not os.path.exists(uploaded.file.path):
+            uploaded.status = UploadedFile.Status.ERROR
+            uploaded.save()
+            return
+
         file_path = uploaded.file.path
         delimiter, rows = read_csv_rows(file_path)
-
         column = uploaded.selected_column
 
-        # DEBUG — remove depois de confirmar
-        if rows:
-            print(f"Colunas disponíveis: {list(rows[0].keys())}")
-            print(f"Linha 1: {rows[0]}")
+        # Verifica se a coluna ainda existe no arquivo
+        if rows and column not in rows[0]:
+            uploaded.status = UploadedFile.Status.ERROR
+            uploaded.save()
+            return
 
         results = []
         for i, row in enumerate(rows, start=1):
-            cep_raw   = row.get(column, '').strip()
-            latitude  = row.get('latitude', '').strip()
-            longitude = row.get('longitude', '').strip()
-            cep_data  = lookup_cep(cep_raw)
+            cep_raw  = row.get(column, '').strip()
+            cep_data = lookup_cep(cep_raw)
 
             results.append(CepResult(
                 uploaded_file=uploaded,
@@ -106,6 +119,7 @@ def _processar_em_background(uploaded_id):
                 latitude=cep_data.latitude,
                 longitude=cep_data.longitude,
                 found=cep_data.found,
+                error_message=cep_data.error,  
             ))
 
         CepResult.objects.bulk_create(results)
@@ -113,22 +127,26 @@ def _processar_em_background(uploaded_id):
         uploaded.save()
 
     except Exception as e:
-        import traceback
-        print(f"ERRO NO BACKGROUND:\n{traceback.format_exc()}")
         uploaded.status = UploadedFile.Status.ERROR
         uploaded.save()
-    except Exception as e:
-        import traceback
-        print(f"ERRO NO BACKGROUND:\n{traceback.format_exc()}")
-        uploaded.status = UploadedFile.Status.ERROR
-        uploaded.save()
-
 
 def process_file(request, pk):
     uploaded = get_object_or_404(UploadedFile, id=pk)
 
     if uploaded.status == UploadedFile.Status.DONE:
         return redirect('core:results', pk=uploaded.id)
+
+    # Se está processando há mais de 30 minutos, considera travado e reprocessa
+    if uploaded.status == UploadedFile.Status.PROCESSING:
+        from django.utils import timezone
+        from datetime import timedelta
+        limite = timezone.now() - timedelta(minutes=30)
+        if uploaded.updated_at > limite:
+            # Ainda está dentro do tempo — vai para a página de aguarde
+            return redirect('core:aguarde', pk=uploaded.id)
+        # Passou do tempo — marca como erro e reprocessa
+        uploaded.status = UploadedFile.Status.ERROR
+        uploaded.save()
 
     uploaded.results.all().delete()
     uploaded.status = UploadedFile.Status.PROCESSING
@@ -142,8 +160,6 @@ def process_file(request, pk):
     thread.start()
 
     return redirect('core:aguarde', pk=uploaded.id)
-
-
 def aguarde(request, pk):
     uploaded = get_object_or_404(UploadedFile, id=pk)
 
