@@ -44,7 +44,6 @@ def lookup_cep(cep_raw: str) -> CepData:
 
 
 def _get_from_cache(cep: str) -> CepData | None:
-    """Busca o CEP no banco de dados. Retorna None se não estiver em cache."""
     try:
         cached = CepCache.objects.get(cep=cep)
         return CepData(
@@ -54,10 +53,26 @@ def _get_from_cache(cep: str) -> CepData | None:
             bairro=cached.bairro,
             cidade=cached.cidade,
             estado=cached.estado,
+            latitude=cached.latitude,   # ← novo
+            longitude=cached.longitude, # ← novo
         )
     except CepCache.DoesNotExist:
         return None
 
+
+def _save_to_cache(data: CepData):
+    CepCache.objects.update_or_create(
+        cep=data.cep,
+        defaults={
+            'logradouro': data.logradouro,
+            'bairro':     data.bairro,
+            'cidade':     data.cidade,
+            'estado':     data.estado,
+            'latitude':   data.latitude,   # ← novo
+            'longitude':  data.longitude,  # ← novo
+            'found':      data.found,
+        }
+    )
 
 def _fetch_from_providers(cep: str) -> CepData:
     """Tenta cada provider em ordem. Retorna o primeiro resultado válido."""
@@ -76,15 +91,3 @@ def _fetch_from_providers(cep: str) -> CepData:
     )
 
 
-def _save_to_cache(data: CepData):
-    """Salva o resultado no cache. Usa update_or_create para evitar duplicatas."""
-    CepCache.objects.update_or_create(
-        cep=data.cep,
-        defaults={
-            'logradouro': data.logradouro,
-            'bairro':     data.bairro,
-            'cidade':     data.cidade,
-            'estado':     data.estado,
-            'found':      data.found,
-        }
-    )

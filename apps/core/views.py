@@ -1,89 +1,16 @@
+import csv
+import io
+import threading
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.http import HttpResponse
+
 from .forms import UploadCSVForm, SelectColumnForm
 from .models import UploadedFile, CepResult
 from apps.csv_processor.services import read_csv_columns
 from apps.cep_service.services import lookup_cep
-import csv
-import io
-
-
-def upload_file(request):
-    if request.method == 'POST':
-        form = UploadCSVForm(request.POST, request.FILES)
-
-        if form.is_valid():
-            file = form.cleaned_data['file']
-            result = read_csv_columns(file)
-
-            if not result.success:
-                messages.error(request, result.error_message)
-                return render(request, 'core/upload.html', {'form': form})
-
-            uploaded = UploadedFile.objects.create(
-                original_name=file.name,
-                file=file,
-                total_rows=result.total_rows,
-            )
-
-            request.session['csv_columns'] = result.columns
-            request.session['uploaded_file_id'] = uploaded.id
-
-            messages.success(request, f'Arquivo enviado! {result.total_rows} linhas encontradas.')
-            return redirect('core:select_column')
-    else:
-        form = UploadCSVForm()
-
-    return render(request, 'core/upload.html', {'form': form})
-
-
-def select_column(request):
-    # Recupera os dados da sessão
-    columns = request.session.get('csv_columns')
-    uploaded_file_id = request.session.get('uploaded_file_id')
-
-    # Se não há sessão, o usuário acessou a página diretamente — manda de volta
-    if not columns or not uploaded_file_id:
-        messages.warning(request, 'Envie um arquivo CSV primeiro.')
-        return redirect('core:upload')
-
-    uploaded = get_object_or_404(UploadedFile, id=uploaded_file_id)
-
-    if request.method == 'POST':
-        form = SelectColumnForm(request.POST, columns=columns)
-
-        if form.is_valid():
-            selected = form.cleaned_data['column']
-
-            # Salva a coluna escolhida no banco
-            uploaded.selected_column = selected
-            uploaded.save()
-
-            # Limpa a sessão — não precisamos mais das colunas
-            del request.session['csv_columns']
-
-            messages.success(request, f'Coluna "{selected}" selecionada.')
-            return redirect('core:process', pk=uploaded.id)
-    else:
-        form = SelectColumnForm(columns=columns)
-
-    context = {
-        'form': form,
-        'uploaded': uploaded,
-        'columns': columns,
-    }
-    return render(request, 'core/select_column.html', context)
-
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib import messages
-from .forms import UploadCSVForm, SelectColumnForm
-from .models import UploadedFile, CepResult
-from apps.csv_processor.services import read_csv_columns
-from apps.cep_service.services import lookup_cep
-import csv
-import io
 
 
 def upload_file(request):
@@ -143,32 +70,30 @@ def select_column(request):
     })
 
 
-def process_file(request, pk):
-    uploaded = get_object_or_404(UploadedFile, id=pk)
+def _processar_em_background(uploaded_id):
+    """Função que roda em uma thread separada."""
+    from apps.csv_processor.services import read_csv_rows
 
-    if uploaded.status == UploadedFile.Status.DONE:
-        return redirect('core:results', pk=uploaded.id)
-
-    # Limpa resultados de tentativas anteriores
-    uploaded.results.all().delete()
-
-    uploaded.status = UploadedFile.Status.PROCESSING
-    uploaded.save()
+    uploaded = UploadedFile.objects.get(id=uploaded_id)
 
     try:
-        with uploaded.file.open('r') as f:
-            content = f.read()
+        # Usa o service que já tem detecção de delimitador
+        file_path = uploaded.file.path
+        delimiter, rows = read_csv_rows(file_path)
 
-        lines = [line for line in content.splitlines() if line.strip()]
-        content_clean = '\n'.join(lines)
-
-        reader = csv.DictReader(io.StringIO(content_clean))
         column = uploaded.selected_column
 
+        # DEBUG — remove depois de confirmar
+        if rows:
+            print(f"Colunas disponíveis: {list(rows[0].keys())}")
+            print(f"Linha 1: {rows[0]}")
+
         results = []
-        for i, row in enumerate(reader, start=1):
-            cep_raw = row.get(column, '').strip()
-            cep_data = lookup_cep(cep_raw)
+        for i, row in enumerate(rows, start=1):
+            cep_raw   = row.get(column, '').strip()
+            latitude  = row.get('latitude', '').strip()
+            longitude = row.get('longitude', '').strip()
+            cep_data  = lookup_cep(cep_raw)
 
             results.append(CepResult(
                 uploaded_file=uploaded,
@@ -178,47 +103,77 @@ def process_file(request, pk):
                 bairro=cep_data.bairro,
                 cidade=cep_data.cidade,
                 estado=cep_data.estado,
+                latitude=cep_data.latitude,
+                longitude=cep_data.longitude,
                 found=cep_data.found,
             ))
 
         CepResult.objects.bulk_create(results)
-
         uploaded.status = UploadedFile.Status.DONE
         uploaded.save()
 
-        messages.success(request, f'{len(results)} CEPs processados com sucesso!')
-        return redirect('core:results', pk=uploaded.id)
-
     except Exception as e:
+        import traceback
+        print(f"ERRO NO BACKGROUND:\n{traceback.format_exc()}")
         uploaded.status = UploadedFile.Status.ERROR
         uploaded.save()
-        messages.error(request, f'Erro durante o processamento: {str(e)}')
-        return redirect('core:upload')
-    
+    except Exception as e:
+        import traceback
+        print(f"ERRO NO BACKGROUND:\n{traceback.format_exc()}")
+        uploaded.status = UploadedFile.Status.ERROR
+        uploaded.save()
 
+
+def process_file(request, pk):
+    uploaded = get_object_or_404(UploadedFile, id=pk)
+
+    if uploaded.status == UploadedFile.Status.DONE:
+        return redirect('core:results', pk=uploaded.id)
+
+    uploaded.results.all().delete()
+    uploaded.status = UploadedFile.Status.PROCESSING
+    uploaded.save()
+
+    thread = threading.Thread(
+        target=_processar_em_background,
+        args=(uploaded.id,)
+    )
+    thread.daemon = True
+    thread.start()
+
+    return redirect('core:aguarde', pk=uploaded.id)
+
+
+def aguarde(request, pk):
+    uploaded = get_object_or_404(UploadedFile, id=pk)
+
+    if uploaded.status == UploadedFile.Status.DONE:
+        return redirect('core:results', pk=uploaded.id)
+
+    if uploaded.status == UploadedFile.Status.ERROR:
+        messages.error(request, 'Erro durante o processamento.')
+        return redirect('core:upload')
+
+    return render(request, 'core/aguarde.html', {'uploaded': uploaded})
 
 
 def results(request, pk):
     uploaded = get_object_or_404(UploadedFile, id=pk)
 
-    # Busca todos os resultados do arquivo
     cep_results = uploaded.results.all()
 
-    # Filtro por status (encontrado / não encontrado)
     filter_status = request.GET.get('status', 'all')
     if filter_status == 'found':
         cep_results = cep_results.filter(found=True)
     elif filter_status == 'not_found':
         cep_results = cep_results.filter(found=False)
 
-    # Paginação — 50 resultados por página
     paginator = Paginator(cep_results, 50)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    # Estatísticas
-    total = uploaded.results.count()
-    found = uploaded.results.filter(found=True).count()
+    total     = uploaded.results.count()
+    found     = uploaded.results.filter(found=True).count()
     not_found = total - found
 
     context = {
@@ -234,29 +189,26 @@ def results(request, pk):
     }
     return render(request, 'core/results.html', context)
 
+
 def export_csv(request, pk):
     uploaded = get_object_or_404(UploadedFile, id=pk)
 
-    # Prepara a resposta como arquivo CSV para download
     response = HttpResponse(content_type='text/csv; charset=utf-8')
     response['Content-Disposition'] = f'attachment; filename="resultado_{uploaded.original_name}"'
-
-    # BOM para o Excel reconhecer UTF-8 corretamente
     response.write('\ufeff')
 
     writer = csv.writer(response)
-
-    # Cabeçalho
     writer.writerow([
         'cep_original',
         'logradouro',
         'bairro',
         'cidade',
         'estado',
+        'latitude',
+        'longitude',
         'encontrado',
     ])
 
-    # Dados
     for result in uploaded.results.all():
         writer.writerow([
             result.cep_original,
@@ -264,6 +216,8 @@ def export_csv(request, pk):
             result.bairro,
             result.cidade,
             result.estado,
+            result.latitude,
+            result.longitude,
             'Sim' if result.found else 'Não',
         ])
 

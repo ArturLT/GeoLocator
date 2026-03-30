@@ -28,12 +28,11 @@ class UploadedFile(models.Model):
     def __str__(self):
         return f"{self.original_name} ({self.status})"
 
-
 class CepResult(models.Model):
 
     uploaded_file = models.ForeignKey(
         UploadedFile,
-        on_delete=models.CASCADE,   # se deletar o arquivo, deleta os resultados
+        on_delete=models.CASCADE,
         related_name='results'
     )
     row_number   = models.IntegerField()
@@ -42,6 +41,8 @@ class CepResult(models.Model):
     bairro       = models.CharField(max_length=100, blank=True)
     cidade       = models.CharField(max_length=100, blank=True)
     estado       = models.CharField(max_length=2,   blank=True)
+    latitude     = models.CharField(max_length=20,  blank=True)  # ← novo
+    longitude    = models.CharField(max_length=20,  blank=True)  # ← novo
     found        = models.BooleanField(default=False)
 
     class Meta:

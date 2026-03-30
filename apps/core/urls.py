@@ -9,4 +9,5 @@ urlpatterns = [
     path('processar/<int:pk>/', views.process_file, name='process'),
     path('resultados/<int:pk>/', views.results, name='results'),
     path('exportar/<int:pk>/', views.export_csv, name='export'),  
+    path('aguarde/<int:pk>/', views.aguarde, name='aguarde'),
 ]

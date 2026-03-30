@@ -64,26 +64,30 @@
                 <th>Bairro</th>
                 <th>Cidade</th>
                 <th>UF</th>
+                <th>Latitude</th>   
+                <th>Longitude</th> 
                 <th>Status</th>
             </tr>
         </thead>
         <tbody>
             {% for result in page_obj %}
             <tr>
-                <td>{{ result.row_number }}</td>
-                <td>{{ result.cep_original }}</td>
-                <td>{{ result.logradouro|default:"—" }}</td>
-                <td>{{ result.bairro|default:"—" }}</td>
-                <td>{{ result.cidade|default:"—" }}</td>
-                <td>{{ result.estado|default:"—" }}</td>
-                <td>
-                    {% if result.found %}
-                        <span class="badge found">Encontrado</span>
-                    {% else %}
-                        <span class="badge missing">Não encontrado</span>
-                    {% endif %}
-                </td>
-            </tr>
+            <td>{{ result.row_number }}</td>
+            <td>{{ result.cep_original }}</td>
+            <td>{{ result.logradouro|default:"—" }}</td>
+            <td>{{ result.bairro|default:"—" }}</td>
+            <td>{{ result.cidade|default:"—" }}</td>
+            <td>{{ result.estado|default:"—" }}</td>
+            <td>{{ result.latitude|default:"—" }}</td>   
+            <td>{{ result.longitude|default:"—" }}</td>  
+            <td>
+                {% if result.found %}
+                    <span class="badge found">Encontrado</span>
+                {% else %}
+                    <span class="badge missing">Não encontrado</span>
+                {% endif %}
+            </td>
+        </tr>
             {% empty %}
                 <tr>
                     <td colspan="7" style="text-align:center; color:#999; padding:32px;">

@@ -38,6 +38,9 @@ def _detect_delimiter(sample: str) -> str:
 
 
 def read_csv_columns(file) -> CSVReadResult:
+    """
+    Lê um arquivo CSV enviado via upload e retorna suas colunas e total de linhas.
+    """
     try:
         raw = file.read()
         try:
@@ -89,3 +92,24 @@ def read_csv_columns(file) -> CSVReadResult:
             total_rows=0,
             error_message='Não foi possível processar o arquivo.'
         )
+
+
+def read_csv_rows(file_path: str) -> tuple[str, list[dict]]:
+    """
+    Lê o arquivo do disco pelo caminho e retorna o delimitador detectado e as linhas.
+    Usado pelo processamento em background — reutiliza a mesma detecção de delimitador.
+    """
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+        content = f.read()
+
+    # Remove linhas vazias
+    lines = [line for line in content.splitlines() if line.strip()]
+    content_clean = '\n'.join(lines)
+
+    sample = content_clean[:1024]
+    delimiter = _detect_delimiter(sample)
+
+    reader = csv.DictReader(io.StringIO(content_clean), delimiter=delimiter)
+    rows = list(reader)
+
+    return delimiter, rows
