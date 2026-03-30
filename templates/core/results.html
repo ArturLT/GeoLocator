@@ -1,0 +1,119 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>CEP Finder — Resultados</title>
+    <link rel="stylesheet" href="{% static 'css/core/results.css' %}">
+</head>
+<body>
+
+    <a href="{% url 'core:upload' %}" class="back">← Novo upload</a>
+
+    <h1>Resultados — {{ uploaded.original_name }}</h1>
+    <p class="subtitle">Processado em {{ uploaded.updated_at|date:"d/m/Y H:i" }}</p>
+
+    <!-- Estatísticas -->
+    <div class="stats">
+        <div class="stat-card">
+            <div class="number">{{ stats.total }}</div>
+            <div class="label">Total de CEPs</div>
+        </div>
+        <div class="stat-card found">
+            <div class="number">{{ stats.found }}</div>
+            <div class="label">Encontrados</div>
+        </div>
+        <div class="stat-card missing">
+            <div class="number">{{ stats.not_found }}</div>
+            <div class="label">Não encontrados</div>
+        </div>
+        <div class="stat-card">
+            <div class="number">{{ stats.percent }}%</div>
+            <div class="label">Taxa de sucesso</div>
+        </div>
+    </div>
+
+    <!-- Ações e filtros -->
+    <div class="actions">
+        <div class="filters">
+            <a href="?status=all"
+               class="filter-btn {% if filter_status == 'all' %}active{% endif %}">
+                Todos
+            </a>
+            <a href="?status=found"
+               class="filter-btn {% if filter_status == 'found' %}active{% endif %}">
+                Encontrados
+            </a>
+            <a href="?status=not_found"
+               class="filter-btn {% if filter_status == 'not_found' %}active{% endif %}">
+                Não encontrados
+            </a>
+        </div>
+        <a href="{% url 'core:export' uploaded.id %}" class="export-btn">
+            Baixar CSV
+        </a>
+    </div>
+
+    <!-- Tabela -->
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>CEP</th>
+                <th>Logradouro</th>
+                <th>Bairro</th>
+                <th>Cidade</th>
+                <th>UF</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in page_obj %}
+            <tr>
+                <td>{{ result.row_number }}</td>
+                <td>{{ result.cep_original }}</td>
+                <td>{{ result.logradouro|default:"—" }}</td>
+                <td>{{ result.bairro|default:"—" }}</td>
+                <td>{{ result.cidade|default:"—" }}</td>
+                <td>{{ result.estado|default:"—" }}</td>
+                <td>
+                    {% if result.found %}
+                        <span class="badge found">Encontrado</span>
+                    {% else %}
+                        <span class="badge missing">Não encontrado</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="7" style="text-align:center; color:#999; padding:32px;">
+                        Nenhum resultado encontrado.
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Paginação -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination">
+        {% if page_obj.has_previous %}
+            <a href="?status={{ filter_status }}&page={{ page_obj.previous_page_number }}">←</a>
+        {% endif %}
+
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+                <span class="current">{{ num }}</span>
+            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                <a href="?status={{ filter_status }}&page={{ num }}">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+
+        {% if page_obj.has_next %}
+            <a href="?status={{ filter_status }}&page={{ page_obj.next_page_number }}">→</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+</body>
+</html>

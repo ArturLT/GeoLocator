@@ -1,8 +1,13 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.core.paginator import Paginator
+from django.http import HttpResponse
 from .forms import UploadCSVForm, SelectColumnForm
-from .models import UploadedFile
+from .models import UploadedFile, CepResult
 from apps.csv_processor.services import read_csv_columns
+from apps.cep_service.services import lookup_cep
+import csv
+import io
 
 
 def upload_file(request):
@@ -185,15 +190,81 @@ def process_file(request, pk):
         return redirect('core:results', pk=uploaded.id)
 
     except Exception as e:
-        import traceback
-        print(f"ERRO COMPLETO:\n{traceback.format_exc()}")
         uploaded.status = UploadedFile.Status.ERROR
         uploaded.save()
         messages.error(request, f'Erro durante o processamento: {str(e)}')
         return redirect('core:upload')
     
+
+
+
 def results(request, pk):
-    # Implementaremos na Etapa 7
     uploaded = get_object_or_404(UploadedFile, id=pk)
-    messages.info(request, f'Resultados de "{uploaded.original_name}" em breve!')
-    return redirect('core:upload')
+
+    # Busca todos os resultados do arquivo
+    cep_results = uploaded.results.all()
+
+    # Filtro por status (encontrado / não encontrado)
+    filter_status = request.GET.get('status', 'all')
+    if filter_status == 'found':
+        cep_results = cep_results.filter(found=True)
+    elif filter_status == 'not_found':
+        cep_results = cep_results.filter(found=False)
+
+    # Paginação — 50 resultados por página
+    paginator = Paginator(cep_results, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Estatísticas
+    total = uploaded.results.count()
+    found = uploaded.results.filter(found=True).count()
+    not_found = total - found
+
+    context = {
+        'uploaded': uploaded,
+        'page_obj': page_obj,
+        'filter_status': filter_status,
+        'stats': {
+            'total': total,
+            'found': found,
+            'not_found': not_found,
+            'percent': round((found / total * 100), 1) if total > 0 else 0,
+        }
+    }
+    return render(request, 'core/results.html', context)
+
+def export_csv(request, pk):
+    uploaded = get_object_or_404(UploadedFile, id=pk)
+
+    # Prepara a resposta como arquivo CSV para download
+    response = HttpResponse(content_type='text/csv; charset=utf-8')
+    response['Content-Disposition'] = f'attachment; filename="resultado_{uploaded.original_name}"'
+
+    # BOM para o Excel reconhecer UTF-8 corretamente
+    response.write('\ufeff')
+
+    writer = csv.writer(response)
+
+    # Cabeçalho
+    writer.writerow([
+        'cep_original',
+        'logradouro',
+        'bairro',
+        'cidade',
+        'estado',
+        'encontrado',
+    ])
+
+    # Dados
+    for result in uploaded.results.all():
+        writer.writerow([
+            result.cep_original,
+            result.logradouro,
+            result.bairro,
+            result.cidade,
+            result.estado,
+            'Sim' if result.found else 'Não',
+        ])
+
+    return response

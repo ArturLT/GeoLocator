@@ -6,7 +6,7 @@ app_name = 'core'
 urlpatterns = [
     path('', views.upload_file, name='upload'),
     path('selecionar/', views.select_column, name='select_column'),
-    path('processar/<int:pk>/', views.process_file, name='process'), 
-    path('resultados/<int:pk>/', views.results, name='results'),  # ← novo
-
+    path('processar/<int:pk>/', views.process_file, name='process'),
+    path('resultados/<int:pk>/', views.results, name='results'),
+    path('exportar/<int:pk>/', views.export_csv, name='export'),  
 ]
